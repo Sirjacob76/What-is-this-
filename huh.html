@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Huh — why is this like this?</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1e222b; --line:#2a2f3a;
+    --ink:#f3f5f8; --muted:#9aa3b2; --brand:#ffd23f; --brand-ink:#1a1400;
+    --ok:#3ecf8e; --warn:#ffb020; --danger:#ff5d5d; --accent:#7aa2ff;
+    --radius:18px; --shadow:0 12px 40px rgba(0,0,0,.45);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;padding:24px 16px 64px}
+  .wrap{max-width:680px;margin:0 auto}
+
+  header.app{display:flex;align-items:center;gap:12px;margin:6px 2px 22px}
+  .logo{width:44px;height:44px;border-radius:12px;background:var(--brand);color:var(--brand-ink);
+    display:grid;place-items:center;font-weight:900;font-size:22px;box-shadow:var(--shadow)}
+  .brand h1{font-size:20px;margin:0;letter-spacing:.2px}
+  .brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+  .settings-btn{margin-left:auto;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
+    border-radius:12px;padding:9px 12px;font-size:13px;cursor:pointer}
+  .settings-btn:hover{color:var(--ink)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .pad{padding:18px}
+
+  /* ---- capture ---- */
+  .dropzone{border:2px dashed var(--line);border-radius:var(--radius);background:var(--panel-2);
+    aspect-ratio:4/3;display:grid;place-items:center;text-align:center;cursor:pointer;overflow:hidden;position:relative}
+  .dropzone:hover{border-color:var(--accent)}
+  .dropzone.has-img{border-style:solid}
+  .dropzone img{width:100%;height:100%;object-fit:cover;display:block}
+  .dz-inner{padding:24px;color:var(--muted)}
+  .dz-inner .big{font-size:40px;line-height:1;margin-bottom:10px}
+  .dz-inner b{color:var(--ink)}
+  .retake{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);
+    color:#fff;border-radius:10px;padding:6px 10px;font-size:12px;cursor:pointer;backdrop-filter:blur(4px)}
+
+  .qrow{display:flex;gap:8px;margin-top:14px;align-items:stretch}
+  .qbox{flex:1;position:relative}
+  textarea#q{width:100%;min-height:52px;resize:vertical;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--ink);border-radius:12px;padding:14px 44px 14px 14px;font:inherit;font-size:15px}
+  textarea#q:focus{outline:none;border-color:var(--accent)}
+  .mic{position:absolute;right:8px;top:8px;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel);color:var(--muted);cursor:pointer;display:grid;place-items:center;font-size:16px}
+  .mic:hover{color:var(--ink)}
+  .mic.live{color:var(--danger);border-color:var(--danger);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.5}}
+
+  .go{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button.primary{background:var(--brand);color:var(--brand-ink);border:none;border-radius:12px;
+    padding:14px 20px;font-size:15px;font-weight:800;cursor:pointer;flex:1;min-width:180px}
+  button.primary:disabled{opacity:.5;cursor:not-allowed}
+  .linkbtn{background:none;border:none;color:var(--accent);cursor:pointer;font-size:14px;padding:6px}
+  .hint{color:var(--muted);font-size:12.5px;margin-top:10px}
+
+  /* ---- settings ---- */
+  .settings{display:none;margin-top:14px}
+  .settings.open{display:block}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+  .field input,.field select{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+    border-radius:10px;padding:11px 12px;font:inherit;font-size:14px}
+  .seg{display:flex;gap:6px;background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:4px}
+  .seg button{flex:1;background:none;border:none;color:var(--muted);padding:9px;border-radius:9px;cursor:pointer;font:inherit;font-size:13px}
+  .seg button.on{background:var(--brand);color:var(--brand-ink);font-weight:700}
+  .keyhint{font-size:12px;color:var(--muted);margin-top:6px}
+  .keyhint a{color:var(--accent)}
+
+  /* ---- result ---- */
+  #result{margin-top:20px;display:none}
+  .diag{overflow:hidden}
+  .diag .photo{width:100%;max-height:280px;object-fit:cover;display:block;background:#000}
+  .diag .body{padding:18px}
+  .kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .title{font-size:22px;font-weight:800;margin:4px 0 2px}
+  .stakes{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px;margin-top:8px}
+  .stakes.low{background:rgba(62,207,142,.15);color:var(--ok)}
+  .stakes.medium{background:rgba(255,176,32,.15);color:var(--warn)}
+  .stakes.high{background:rgba(255,93,93,.15);color:var(--danger)}
+  .sec{margin-top:16px}
+  .sec h3{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 5px}
+  .sec p{margin:0;font-size:15.5px;line-height:1.5}
+  .nextstep{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--brand);
+    border-radius:10px;padding:12px 14px;margin-top:16px}
+  .safety{background:rgba(255,93,93,.1);border:1px solid rgba(255,93,93,.35);border-radius:10px;
+    padding:12px 14px;margin-top:16px;display:flex;gap:10px}
+  .safety .ic{font-size:18px}
+  .safety p{margin:0;font-size:14px;line-height:1.45;color:#ffd7d7}
+  .actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+  .actions button{border-radius:11px;padding:11px 14px;font-size:14px;cursor:pointer;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--ink)}
+  .actions button:hover{border-color:var(--accent)}
+
+  .status{display:none;align-items:center;gap:10px;color:var(--muted);font-size:14px;margin-top:16px}
+  .status.show{display:flex}
+  .spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .err{display:none;background:rgba(255,93,93,.1);border:1px solid rgba(255,93,93,.35);color:#ffd7d7;
+    border-radius:10px;padding:12px 14px;margin-top:16px;font-size:14px}
+  .err.show{display:block}
+
+  /* ---- history ---- */
+  #history{margin-top:34px;display:none}
+  #history h2{font-size:14px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:0 0 12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer;text-align:left}
+  .tile:hover{border-color:var(--accent)}
+  .tile img{width:100%;height:96px;object-fit:cover;display:block;background:#000}
+  .tile .tb{padding:10px}
+  .tile .tt{font-size:13px;font-weight:700;line-height:1.25;margin:0 0 6px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .tile .dot{display:inline-block;width:8px;height:8px;border-radius:50%}
+  .tile .dot.low{background:var(--ok)}.tile .dot.medium{background:var(--warn)}.tile .dot.high{background:var(--danger)}
+  .tile .st{font-size:11px;color:var(--muted)}
+
+  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:40px;line-height:1.6}
+  input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app">
+    <div class="logo">?</div>
+    <div class="brand">
+      <h1>Huh</h1>
+      <p>Point at a mystery. Get a straight answer.</p>
+    </div>
+    <button class="settings-btn" id="settingsToggle">⚙ Setup</button>
+  </header>
+
+  <!-- capture card -->
+  <div class="card pad">
+    <div class="settings" id="settings">
+      <div class="field">
+        <label>AI provider</label>
+        <div class="seg" id="providerSeg">
+          <button data-p="gemini" class="on">Google Gemini · free</button>
+          <button data-p="claude">Claude · paid</button>
+        </div>
+        <div class="keyhint" id="providerHint">
+          Free key, no card needed → <a id="keyLink" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>
+        </div>
+      </div>
+      <div class="field">
+        <label>API key <span style="color:var(--muted)">(stays in your browser)</span></label>
+        <input id="apiKey" type="password" placeholder="Paste your key here" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Model</label>
+        <select id="model"></select>
+      </div>
+    </div>
+
+    <div class="dropzone" id="dropzone">
+      <div class="dz-inner" id="dzInner">
+        <div class="big">📷</div>
+        <div><b>Tap to snap or upload a photo</b></div>
+        <div style="margin-top:4px">of whatever's got you saying “huh?”</div>
+      </div>
+    </div>
+    <input type="file" id="file" accept="image/*" capture="environment" />
+
+    <div class="qrow">
+      <div class="qbox">
+        <textarea id="q" placeholder="What do you want to know? e.g. “What is this and is it safe to touch?”"></textarea>
+        <button class="mic" id="mic" title="Ask out loud">🎤</button>
+      </div>
+    </div>
+
+    <div class="go">
+      <button class="primary" id="diagnose">Diagnose it</button>
+    </div>
+    <div class="hint">
+      No key yet? <button class="linkbtn" id="sample" style="padding:0">See a sample answer →</button>
+    </div>
+
+    <div class="status" id="status"><div class="spin"></div><span id="statusText">Thinking…</span></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <!-- result -->
+  <div id="result">
+    <div class="card diag" id="diagCard">
+      <img class="photo" id="rPhoto" alt="" />
+      <div class="body">
+        <div class="kicker">Huh · diagnosis</div>
+        <div class="title" id="rTitle"></div>
+        <span class="stakes" id="rStakes"></span>
+
+        <div class="sec"><h3>What it is</h3><p id="rWhat"></p></div>
+        <div class="sec"><h3>Why it's like this</h3><p id="rWhy"></p></div>
+
+        <div class="nextstep"><h3 style="margin-bottom:5px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Do this next</h3><p id="rNext" style="margin:0;font-size:15.5px;line-height:1.5"></p></div>
+        <div class="safety" id="rSafety" style="display:none"><div class="ic">⚠️</div><p id="rSafetyText"></p></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="saveImg">🖼 Save as image</button>
+      <button id="shareImg" style="display:none">📤 Share</button>
+      <button id="again">↺ New mystery</button>
+    </div>
+  </div>
+
+  <!-- history -->
+  <div id="history">
+    <h2>This session's mysteries</h2>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <footer>
+    Your photo and key go straight from your browser to the AI provider you choose — nothing is stored on any server.<br/>
+    History lives in this tab only and clears when you close it.
+  </footer>
+</div>
+
+<canvas id="exportCanvas" style="display:none"></canvas>
+
+<script>
+"use strict";
+(function(){
+  const $ = id => document.getElementById(id);
+
+  // ---------- provider config ----------
+  const PROVIDERS = {
+    gemini: {
+      label:"Google Gemini",
+      keyUrl:"https://aistudio.google.com/apikey",
+      keyText:"aistudio.google.com/apikey",
+      keyHint:'Free key, no card needed → ',
+      models:["gemini-2.5-flash","gemini-2.0-flash","gemini-2.5-flash-lite"],
+    },
+    claude:{
+      label:"Claude",
+      keyUrl:"https://console.anthropic.com/settings/keys",
+      keyText:"console.anthropic.com",
+      keyHint:'Paid key (needs credit) → ',
+      models:["claude-opus-4-8","claude-sonnet-5","claude-haiku-4-5-20251001"],
+    }
+  };
+
+  const state = {
+    provider:"gemini",
+    imgDataUrl:null,      // full data URL for display
+    imgB64:null,          // base64 payload only
+    imgMime:null,
+    history:[],
+  };
+
+  // ---------- settings persistence (localStorage: key + provider only) ----------
+  function loadPrefs(){
+    try{
+      const p = localStorage.getItem("huh.provider"); if(p && PROVIDERS[p]) state.provider = p;
+      const k = localStorage.getItem("huh.key."+state.provider); if(k) $("apiKey").value = k;
+    }catch(e){}
+  }
+  function savePrefs(){
+    try{
+      localStorage.setItem("huh.provider", state.provider);
+      localStorage.setItem("huh.key."+state.provider, $("apiKey").value.trim());
+    }catch(e){}
+  }
+
+  function renderProvider(){
+    const cfg = PROVIDERS[state.provider];
+    // segment
+    document.querySelectorAll("#providerSeg button").forEach(b=>{
+      b.classList.toggle("on", b.dataset.p===state.provider);
+    });
+    // hint + link
+    $("providerHint").innerHTML = cfg.keyHint +
+      '<a id="keyLink" href="'+cfg.keyUrl+'" target="_blank" rel="noopener">'+cfg.keyText+'</a>';
+    // models
+    const sel = $("model"); sel.innerHTML="";
+    cfg.models.forEach(m=>{ const o=document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o); });
+    // key field restore for this provider
+    try{ const k=localStorage.getItem("huh.key."+state.provider); $("apiKey").value = k||""; }catch(e){}
+  }
+
+  // ---------- settings UI ----------
+  $("settingsToggle").addEventListener("click", ()=> $("settings").classList.toggle("open"));
+  $("providerSeg").addEventListener("click", e=>{
+    const btn = e.target.closest("button[data-p]"); if(!btn) return;
+    state.provider = btn.dataset.p; renderProvider(); savePrefs();
+  });
+  $("apiKey").addEventListener("change", savePrefs);
+  $("model").addEventListener("change", ()=>{ try{localStorage.setItem("huh.model."+state.provider,$("model").value);}catch(e){} });
+
+  // ---------- image capture ----------
+  $("dropzone").addEventListener("click", ()=> $("file").click());
+  $("file").addEventListener("change", e=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    readImage(f);
+  });
+  // drag & drop (desktop)
+  const dz = $("dropzone");
+  ["dragover","dragenter"].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault();dz.style.borderColor="var(--accent)";}));
+  ["dragleave","drop"].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault();dz.style.borderColor="";}));
+  dz.addEventListener("drop", e=>{
+    const f = e.dataTransfer.files && e.dataTransfer.files[0]; if(f) readImage(f);
+  });
+
+  function readImage(file){
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      // downscale big photos so requests stay small & fast
+      const img = new Image();
+      img.onload = ()=>{
+        const max = 1280;
+        let {width:w, height:h} = img;
+        if(Math.max(w,h) > max){ const s = max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+        const c = document.createElement("canvas"); c.width=w; c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        const url = c.toDataURL("image/jpeg", 0.85);
+        state.imgDataUrl = url;
+        state.imgMime = "image/jpeg";
+        state.imgB64 = url.split(",")[1];
+        showThumb(url);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  function showThumb(url){
+    dz.classList.add("has-img");
+    dz.innerHTML = '<img src="'+url+'" alt="your photo"/><button class="retake" id="retake">Retake</button>';
+    $("retake").addEventListener("click", e=>{ e.stopPropagation(); resetImage(); });
+  }
+  function resetImage(){
+    state.imgDataUrl=state.imgB64=state.imgMime=null;
+    dz.classList.remove("has-img");
+    dz.innerHTML = '<div class="dz-inner"><div class="big">📷</div><div><b>Tap to snap or upload a photo</b></div><div style="margin-top:4px">of whatever\'s got you saying “huh?”</div></div>';
+  }
+
+  // ---------- voice input ----------
+  (function initMic(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const mic = $("mic");
+    if(!SR){ mic.style.display="none"; return; }
+    let rec, listening=false;
+    mic.addEventListener("click", ()=>{
+      if(listening){ rec && rec.stop(); return; }
+      rec = new SR(); rec.lang = navigator.language || "en-US"; rec.interimResults = true;
+      let base = $("q").value ? $("q").value.trim()+" " : "";
+      rec.onstart = ()=>{ listening=true; mic.classList.add("live"); };
+      rec.onend   = ()=>{ listening=false; mic.classList.remove("live"); };
+      rec.onerror = ()=>{ listening=false; mic.classList.remove("live"); };
+      rec.onresult = e=>{
+        let txt="";
+        for(let i=0;i<e.results.length;i++) txt += e.results[i][0].transcript;
+        $("q").value = base + txt;
+      };
+      rec.start();
+    });
+  })();
+
+  // ---------- prompt ----------
+  const SYS = `You are "Huh", a calm, plain-spoken home-diagnosis expert. A person points their phone at something puzzling in or around their home and asks a question. Identify what it is and explain why it looks/behaves this way, in the voice of a knowledgeable friend — direct, warm, zero jargon or hedging.
+
+Return ONLY a JSON object, no markdown fences, with exactly these keys:
+{
+  "title": "3-6 word name for the thing",
+  "what": "1-2 sentences plainly identifying it",
+  "why": "2-4 sentences on why it's like this / what's happening",
+  "stakes": "low" | "medium" | "high",
+  "next_step": "the single most useful thing to do next, concrete",
+  "safety": null OR "a one-sentence warning ONLY if it involves gas, electrical/wiring, mold, structural damage, or active water leak"
+}
+Set stakes "high" for anything that risks safety or costly damage, "medium" if it needs attention soon, "low" if it's harmless or cosmetic. If you truly cannot tell what it is from the photo, say so honestly in "what" and give a next_step for getting a clearer look.`;
+
+  function buildUserText(q){
+    return "The person's question: " + (q || "What is this and what should I know about it?") +
+      "\n\nAnswer as Huh, following the JSON format exactly.";
+  }
+
+  // ---------- API calls ----------
+  async function callGemini(key, model, userText){
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent";
+    const body = {
+      systemInstruction:{ parts:[{text:SYS}] },
+      contents:[{ role:"user", parts:[
+        {text:userText},
+        {inline_data:{ mime_type:state.imgMime, data:state.imgB64 }}
+      ]}],
+      generationConfig:{ temperature:0.4, responseMimeType:"application/json" }
+    };
+    const r = await fetch(url,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "x-goog-api-key":key },
+      body:JSON.stringify(body)
+    });
+    if(!r.ok){ throw new Error(await friendlyErr(r,"Gemini")); }
+    const data = await r.json();
+    const txt = (((data.candidates||[])[0]||{}).content||{}).parts?.map(p=>p.text).join("") || "";
+    return parseModel(txt);
+  }
+
+  async function callClaude(key, model, userText){
+    const body = {
+      model, max_tokens:700, system:SYS,
+      messages:[{ role:"user", content:[
+        {type:"text", text:userText},
+        {type:"image", source:{ type:"base64", media_type:state.imgMime, data:state.imgB64 }}
+      ]}]
+    };
+    const r = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{
+        "content-type":"application/json",
+        "x-api-key":key,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true"
+      },
+      body:JSON.stringify(body)
+    });
+    if(!r.ok){ throw new Error(await friendlyErr(r,"Claude")); }
+    const data = await r.json();
+    const txt = (data.content||[]).map(b=>b.text||"").join("");
+    return parseModel(txt);
+  }
+
+  async function friendlyErr(r, name){
+    let detail=""; try{ const j=await r.json(); detail = j.error?.message || j.message || ""; }catch(e){}
+    if(r.status===401||r.status===403) return name+" rejected the key. Double-check it in Setup.";
+    if(r.status===429) return name+" is rate-limiting (free tier is a few requests/min). Wait a moment and retry.";
+    if(r.status===400 && /key/i.test(detail)) return name+" says the API key is invalid.";
+    return name+" error ("+r.status+")"+(detail?": "+detail:"");
+  }
+
+  function parseModel(txt){
+    let s = (txt||"").trim().replace(/^```(json)?/i,"").replace(/```$/,"").trim();
+    // grab first {...} block if extra prose slipped in
+    const m = s.match(/\{[\s\S]*\}/); if(m) s = m[0];
+    let obj;
+    try{ obj = JSON.parse(s); }
+    catch(e){ obj = { title:"Here's what I can tell", what:txt||"(no response)", why:"", stakes:"low", next_step:"Try a clearer, closer photo.", safety:null }; }
+    obj.stakes = ["low","medium","high"].includes((obj.stakes||"").toLowerCase()) ? obj.stakes.toLowerCase() : "low";
+    return obj;
+  }
+
+  // ---------- run ----------
+  $("diagnose").addEventListener("click", run);
+  async function run(){
+    hideErr();
+    if(!state.imgB64){ showErr("Add a photo first — tap the box up top."); return; }
+    const key = $("apiKey").value.trim();
+    if(!key){ $("settings").classList.add("open"); showErr("Add your free API key in Setup to run a real diagnosis (or tap “See a sample answer”)."); return; }
+    const model = $("model").value;
+    const userText = buildUserText($("q").value.trim());
+
+    setBusy(true);
+    try{
+      const res = state.provider==="gemini"
+        ? await callGemini(key, model, userText)
+        : await callClaude(key, model, userText);
+      renderResult(res, state.imgDataUrl);
+      addHistory(res, state.imgDataUrl);
+    }catch(err){
+      showErr(err.message || String(err));
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  function setBusy(b){
+    $("diagnose").disabled=b;
+    $("status").classList.toggle("show", b);
+    if(b) $("statusText").textContent = "Reading your photo…";
+  }
+
+  // ---------- render ----------
+  let current=null;
+  function renderResult(r, imgUrl){
+    current = {r, imgUrl};
+    $("rPhoto").src = imgUrl;
+    $("rTitle").textContent = r.title || "Diagnosis";
+    const st = $("rStakes"); st.className = "stakes "+r.stakes;
+    st.textContent = ({low:"● Low stakes",medium:"● Worth attention",high:"● High stakes"})[r.stakes];
+    $("rWhat").textContent = r.what || "";
+    $("rWhy").textContent = r.why || "";
+    $("rWhy").parentElement.style.display = r.why ? "" : "none";
+    $("rNext").textContent = r.next_step || "";
+    if(r.safety){ $("rSafety").style.display="flex"; $("rSafetyText").textContent = r.safety; }
+    else $("rSafety").style.display="none";
+    $("result").style.display="block";
+    $("shareImg").style.display = (navigator.canShare) ? "" : "none";
+    $("result").scrollIntoView({behavior:"smooth", block:"start"});
+  }
+
+  $("again").addEventListener("click", ()=>{
+    $("result").style.display="none";
+    $("q").value=""; resetImage();
+    window.scrollTo({top:0,behavior:"smooth"});
+  });
+
+  // ---------- history ----------
+  function addHistory(r, imgUrl){
+    state.history.unshift({r, imgUrl});
+    const grid = $("grid");
+    $("history").style.display="block";
+    grid.innerHTML="";
+    state.history.forEach((h,i)=>{
+      const t = document.createElement("button"); t.className="tile";
+      t.innerHTML =
+        '<img src="'+h.imgUrl+'" alt=""/>'+
+        '<div class="tb"><p class="tt">'+escapeHtml(h.r.title||"Mystery")+'</p>'+
+        '<span class="st"><span class="dot '+h.r.stakes+'"></span> '+
+        ({low:"Low",medium:"Attention",high:"High"})[h.r.stakes]+'</span></div>';
+      t.addEventListener("click", ()=>{ renderResult(h.r, h.imgUrl); });
+      grid.appendChild(t);
+    });
+  }
+  function escapeHtml(s){return (s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+  // ---------- save/share as image (self-contained canvas renderer) ----------
+  function wrapText(ctx, text, x, y, maxW, lh){
+    const words=(text||"").split(/\s+/); let line="";
+    for(const w of words){
+      const test = line?line+" "+w:w;
+      if(ctx.measureText(test).width>maxW && line){ ctx.fillText(line,x,y); line=w; y+=lh; }
+      else line=test;
+    }
+    if(line) ctx.fillText(line,x,y);
+    return y+lh;
+  }
+  async function renderCard(){
+    if(!current) return null;
+    const {r, imgUrl} = current;
+    const W=1080, P=64, cw=W-P*2;
+    const c=$("exportCanvas"); const ctx=c.getContext("2d");
+    // load photo first to know its drawn height
+    const photo = await new Promise(res=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>res(null); im.src=imgUrl; });
+    const photoH = photo ? Math.round(cw * Math.min(photo.height/photo.width, 0.62)) : 0;
+
+    // measure text block height
+    ctx.font="600 30px "+font();
+    let probe=P+ (photo?photoH+40:40) + 70; // rough start
+    // We'll just render onto a tall canvas then trim isn't trivial; instead compute precisely below.
+
+    // --- compute needed height by dry-run ---
+    const sections=[];
+    sections.push(["What it is", r.what]);
+    if(r.why) sections.push(["Why it's like this", r.why]);
+    sections.push(["Do this next", r.next_step]);
+    if(r.safety) sections.push(["⚠ Safety", r.safety]);
+
+    // measure helper
+    function measure(){
+      let y=P;
+      if(photo) y+=photoH+40;
+      y+=38; // kicker
+      ctx.font="800 52px "+font(); y+=52; // title
+      y+=44; // stakes pill
+      for(const [h,body] of sections){
+        y+=30; // heading
+        ctx.font="400 32px "+font();
+        y=dry(ctx,body,cw,42,y);
+        y+=24;
+      }
+      y+=70; // footer
+      return Math.ceil(y);
+    }
+    function dry(ctx,text,maxW,lh,y){
+      const words=(text||"").split(/\s+/); let line="";
+      for(const w of words){ const t=line?line+" "+w:w; if(ctx.measureText(t).width>maxW&&line){line=w;y+=lh;}else line=t; }
+      if(line) y+=lh; return y;
+    }
+
+    const H = measure();
+    c.width=W; c.height=H;
+
+    // bg
+    ctx.fillStyle="#171a21"; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="#0f1115"; ctx.fillRect(0,0,W,8); // top strip
+
+    let y=P;
+    // photo
+    if(photo){
+      roundRect(ctx,P,y,cw,photoH,20); ctx.save(); ctx.clip();
+      const sc=Math.max(cw/photo.width, photoH/photo.height);
+      const dw=photo.width*sc, dh=photo.height*sc;
+      ctx.drawImage(photo, P+(cw-dw)/2, y+(photoH-dh)/2, dw, dh); ctx.restore();
+      y+=photoH+40;
+    }
+    // kicker
+    ctx.fillStyle="#9aa3b2"; ctx.font="700 20px "+font();
+    ctx.fillText("HUH · DIAGNOSIS", P, y+16); y+=72;
+    // title
+    ctx.fillStyle="#f3f5f8"; ctx.font="800 52px "+font();
+    ctx.fillText(clip(ctx,r.title||"Diagnosis",cw), P, y); y+=20;
+    // stakes pill
+    const stColors={low:["#3ecf8e","rgba(62,207,142,.16)"],medium:["#ffb020","rgba(255,176,32,.16)"],high:["#ff5d5d","rgba(255,93,93,.16)"]};
+    const [fg,bg2]=stColors[r.stakes]; const label=({low:"LOW STAKES",medium:"WORTH ATTENTION",high:"HIGH STAKES"})[r.stakes];
+    ctx.font="700 24px "+font(); const pw=ctx.measureText(label).width+40;
+    ctx.fillStyle=bg2; roundRect(ctx,P,y+14,pw,44,22); ctx.fill();
+    ctx.fillStyle=fg; ctx.fillText(label, P+20, y+42); y+=44+34;
+
+    // sections
+    for(const [h,body] of sections){
+      ctx.fillStyle="#9aa3b2"; ctx.font="700 22px "+font();
+      ctx.fillText(h.toUpperCase(), P, y); y+=34;
+      ctx.fillStyle="#e8ebf0"; ctx.font="400 32px "+font();
+      y=wrapText(ctx,body,P,y,cw,42); y+=18;
+    }
+    // footer mark
+    ctx.fillStyle="#ffd23f"; roundRect(ctx,P,H-P-6,54,54,14); ctx.fill();
+    ctx.fillStyle="#1a1400"; ctx.font="900 30px "+font(); ctx.fillText("?",P+18,H-P+28);
+    ctx.fillStyle="#9aa3b2"; ctx.font="600 24px "+font();
+    ctx.fillText("Made with Huh — point at a mystery, get an answer.", P+72, H-P+26);
+
+    return c;
+  }
+  function font(){return '-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif';}
+  function clip(ctx,t,maxW){ if(ctx.measureText(t).width<=maxW)return t; let s=t; while(s.length>3&&ctx.measureText(s+"…").width>maxW)s=s.slice(0,-1); return s+"…"; }
+  function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+  async function toBlob(){
+    const c = await renderCard(); if(!c) return null;
+    return await new Promise(res=> c.toBlob(res,"image/png"));
+  }
+  $("saveImg").addEventListener("click", async ()=>{
+    const blob = await toBlob(); if(!blob) return;
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download="huh-"+((current.r.title||"diagnosis").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"card")+".png";
+    a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  });
+  $("shareImg").addEventListener("click", async ()=>{
+    const blob = await toBlob(); if(!blob) return;
+    const file = new File([blob], "huh.png", {type:"image/png"});
+    try{
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], title:"Huh diagnosis", text:current.r.title||"What is this?"});
+      }
+    }catch(e){/* user cancelled */}
+  });
+
+  // ---------- sample ----------
+  const SAMPLE = {
+    title:"Efflorescence on basement wall",
+    what:"That white, chalky crust on the concrete is efflorescence — mineral salts left behind as water evaporates out of the masonry.",
+    why:"Moisture is moving through the wall from the soil outside, carrying dissolved salts. When it reaches the surface and dries, the water leaves but the salt stays, building up as that powdery bloom. It means water is getting in, but the crust itself is just the residue, not damage.",
+    stakes:"medium",
+    next_step:"Wipe a patch off and watch whether it returns after the next rain. If it keeps coming back, look at outside grading and gutters directing water toward the wall before considering interior sealer.",
+    safety:"If you also see dark fuzzy patches or a musty smell, that points to mold rather than efflorescence — don't scrub those without a mask and proper ventilation."
+  };
+  const SAMPLE_IMG = (function(){
+    // simple generated placeholder photo (concrete-ish) so sample has an image with no network
+    const c=document.createElement("canvas"); c.width=800;c.height=600; const x=c.getContext("2d");
+    const g=x.createLinearGradient(0,0,800,600); g.addColorStop(0,"#8b8d86");g.addColorStop(1,"#6f7169");
+    x.fillStyle=g;x.fillRect(0,0,800,600);
+    for(let i=0;i<2600;i++){x.fillStyle="rgba("+(180+Math.floor(50*Math.sin(i)))+","+(180)+","+175+","+(0.04+0.05*(i%3))+")";x.fillRect((i*97)%800,(i*131)%600,3,3);}
+    // white bloom
+    for(let i=0;i<40;i++){const rx=200+((i*53)%420),ry=180+((i*71)%260),rr=20+((i*29)%60);const rg=x.createRadialGradient(rx,ry,0,rx,ry,rr);rg.addColorStop(0,"rgba(255,255,255,.55)");rg.addColorStop(1,"rgba(255,255,255,0)");x.fillStyle=rg;x.beginPath();x.arc(rx,ry,rr,0,7);x.fill();}
+    return c.toDataURL("image/jpeg",0.8);
+  })();
+  $("sample").addEventListener("click", ()=>{
+    renderResult(SAMPLE, SAMPLE_IMG);
+    addHistory(SAMPLE, SAMPLE_IMG);
+  });
+
+  // ---------- errors ----------
+  function showErr(m){ const e=$("err"); e.textContent=m; e.classList.add("show"); }
+  function hideErr(){ $("err").classList.remove("show"); }
+
+  // ---------- init ----------
+  loadPrefs();
+  renderProvider();
+  try{ const m=localStorage.getItem("huh.model."+state.provider); if(m) $("model").value=m; }catch(e){}
+})();
+</script>
+</body>
+</html>
