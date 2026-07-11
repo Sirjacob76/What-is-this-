@@ -153,8 +153,9 @@
         <input id="apiKey" type="password" placeholder="Paste your key here" autocomplete="off" />
       </div>
       <div class="field">
-        <label>Model</label>
+        <label>Model <button type="button" id="refreshModels" class="linkbtn" style="font-size:12px;padding:0;margin-left:6px">↻ refresh list</button></label>
         <select id="model"></select>
+        <div class="keyhint" id="modelNote"></div>
       </div>
     </div>
 
@@ -234,7 +235,7 @@
       keyUrl:"https://aistudio.google.com/apikey",
       keyText:"aistudio.google.com/apikey",
       keyHint:'Free key, no card needed → ',
-      models:["gemini-2.5-flash","gemini-2.0-flash","gemini-2.5-flash-lite"],
+      models:["gemini-flash-latest","gemini-3-flash","gemini-flash-lite-latest"],
     },
     claude:{
       label:"Claude",
@@ -276,11 +277,47 @@
     // hint + link
     $("providerHint").innerHTML = cfg.keyHint +
       '<a id="keyLink" href="'+cfg.keyUrl+'" target="_blank" rel="noopener">'+cfg.keyText+'</a>';
-    // models
+    // models (static fallback list first)
     const sel = $("model"); sel.innerHTML="";
     cfg.models.forEach(m=>{ const o=document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o); });
+    try{ const m=localStorage.getItem("huh.model."+state.provider); if(m){ if(![...sel.options].some(o=>o.value===m)){const o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);} sel.value=m; } }catch(e){}
     // key field restore for this provider
-    try{ const k=localStorage.getItem("huh.key."+state.provider); $("apiKey").value = k||""; }catch(e){}
+    let key="";
+    try{ key=localStorage.getItem("huh.key."+state.provider)||""; $("apiKey").value=key; }catch(e){}
+    // refresh button + live model list only apply to Gemini
+    $("refreshModels").style.display = state.provider==="gemini" ? "" : "none";
+    $("modelNote").textContent = "";
+    if(state.provider==="gemini" && key.trim()) fetchGeminiModels(key.trim());
+  }
+
+  // Ask Gemini which models THIS key can actually use, so retired IDs can't 404 us.
+  async function fetchGeminiModels(key){
+    const note=$("modelNote"); note.textContent="Loading the models your key can use…";
+    try{
+      const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",{headers:{"x-goog-api-key":key}});
+      if(!r.ok){ throw new Error("HTTP "+r.status); }
+      const data=await r.json();
+      let models=(data.models||[])
+        .filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent"))
+        .map(m=>m.name.replace(/^models\//,""))
+        .filter(n=>/gemini/i.test(n))
+        .filter(n=>!/(embedding|aqa|imagen|image-generation|nano-banana|tts|audio|veo|learnlm|gemma|robotics|computer-use)/i.test(n));
+      models=[...new Set(models)];
+      // rank: -latest aliases and flash (free) first; pro / preview lower
+      const rank=n=>{ let s=0; if(/latest/.test(n))s-=5; if(/flash-lite/.test(n))s-=2; else if(/flash/.test(n))s-=4; if(/pro/.test(n))s+=4; if(/preview|exp|thinking/.test(n))s+=1; return s; };
+      models.sort((a,b)=>rank(a)-rank(b)||a.localeCompare(b));
+      if(!models.length){ throw new Error("no vision models found"); }
+      const sel=$("model"); const prev=sel.value; sel.innerHTML="";
+      models.forEach(m=>{ const o=document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o); });
+      let saved=null; try{ saved=localStorage.getItem("huh.model.gemini"); }catch(e){}
+      sel.value = models.includes(saved)?saved : (models.includes(prev)?prev:models[0]);
+      try{ localStorage.setItem("huh.model.gemini", sel.value); }catch(e){}
+      note.textContent = "✓ "+models.length+" models available to your key — using “"+sel.value+"”.";
+      return true;
+    }catch(e){
+      note.textContent = "Couldn't load your live model list ("+e.message+") — using defaults; hit “refresh list” after adding your key.";
+      return false;
+    }
   }
 
   // ---------- settings UI ----------
@@ -289,7 +326,8 @@
     const btn = e.target.closest("button[data-p]"); if(!btn) return;
     state.provider = btn.dataset.p; renderProvider(); savePrefs();
   });
-  $("apiKey").addEventListener("change", savePrefs);
+  $("apiKey").addEventListener("change", ()=>{ savePrefs(); const k=$("apiKey").value.trim(); if(state.provider==="gemini" && k) fetchGeminiModels(k); });
+  $("refreshModels").addEventListener("click", ()=>{ const k=$("apiKey").value.trim(); if(!k){ $("modelNote").textContent="Add your API key above first, then refresh."; return; } if(state.provider==="gemini") fetchGeminiModels(k); });
   $("model").addEventListener("change", ()=>{ try{localStorage.setItem("huh.model."+state.provider,$("model").value);}catch(e){} });
 
   // ---------- image capture ----------
@@ -430,6 +468,7 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
     if(r.status===401||r.status===403) return name+" rejected the key. Double-check it in Setup.";
     if(r.status===429) return name+" is rate-limiting (free tier is a few requests/min). Wait a moment and retry.";
     if(r.status===400 && /key/i.test(detail)) return name+" says the API key is invalid.";
+    if(r.status===404){ if(name==="Gemini") return "__MODEL_404__"; return name+" couldn't find that model — it may have been retired. Pick a different model in Setup."; }
     return name+" error ("+r.status+")"+(detail?": "+detail:"");
   }
 
@@ -462,7 +501,13 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
       renderResult(res, state.imgDataUrl);
       addHistory(res, state.imgDataUrl);
     }catch(err){
-      showErr(err.message || String(err));
+      if((err.message||"").indexOf("__MODEL_404__")>=0){
+        $("settings").classList.add("open");
+        await fetchGeminiModels(key);
+        showErr("That model isn't available to your key anymore — I've refreshed the list and picked a working one. Tap “Diagnose it” again.");
+      }else{
+        showErr(err.message || String(err));
+      }
     }finally{
       setBusy(false);
     }
