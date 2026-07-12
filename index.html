@@ -4,6 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Huh — why is this like this?</title>
+<meta name="description" content="Point your phone at a home mystery and get a straight answer." />
+<meta name="theme-color" content="#0f1115" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Huh" />
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --panel-2:#1e222b; --line:#2a2f3a;
@@ -72,6 +81,26 @@
   .keyhint{font-size:12px;color:var(--muted);margin-top:6px}
   .keyhint a{color:var(--accent)}
 
+  /* ---- welcome / onboarding ---- */
+  .welcome{text-align:center}
+  .wlc-emoji{font-size:46px;line-height:1}
+  .welcome h2{margin:10px 0 6px;font-size:23px}
+  .wlc-hero p{color:var(--muted);font-size:15px;line-height:1.5;margin:0 auto 18px;max-width:46ch}
+  .wlc-demo{width:100%;margin:2px 0 4px}
+  .wlc-sep{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:18px 2px 2px;text-transform:uppercase;letter-spacing:.08em}
+  .wlc-sep::before,.wlc-sep::after{content:"";flex:1;height:1px;background:var(--line)}
+  .wlc-steps{list-style:none;counter-reset:s;padding:0;margin:6px 0 0;text-align:left}
+  .wlc-steps li{position:relative;counter-increment:s;padding:14px 0 14px 42px;border-top:1px solid var(--line);font-size:14.5px;line-height:1.45}
+  .wlc-steps li:first-child{border-top:none}
+  .wlc-steps li::before{content:counter(s);position:absolute;left:0;top:13px;width:27px;height:27px;border-radius:50%;background:var(--brand);color:var(--brand-ink);font-weight:800;display:grid;place-items:center;font-size:13px}
+  .wlc-steps b{color:var(--ink)}
+  .wlc-getkey{display:inline-block;margin-top:9px;background:var(--panel-2);border:1px solid var(--accent);color:var(--accent);border-radius:10px;padding:10px 13px;font-size:13.5px;font-weight:700;text-decoration:none}
+  .wlc-keyrow{display:flex;gap:8px;margin-top:9px}
+  .wlc-keyrow input{flex:1;min-width:0;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:11px 12px;font:inherit;font-size:14px}
+  .wlc-keyrow input:focus{outline:none;border-color:var(--accent)}
+  .wlc-keyrow button{background:var(--brand);color:var(--brand-ink);border:none;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer}
+  .wlc-reassure{color:var(--muted);font-size:12px;margin-top:16px;line-height:1.5}
+
   /* ---- result ---- */
   #result{margin-top:20px;display:none}
   .diag{overflow:hidden}
@@ -135,8 +164,34 @@
     <button class="settings-btn" id="settingsToggle">⚙ Setup</button>
   </header>
 
+  <!-- first-run welcome -->
+  <div class="card pad welcome" id="welcome" style="display:none">
+    <div class="wlc-hero">
+      <div class="wlc-emoji">🔍</div>
+      <h2>What is this thing?</h2>
+      <p>Point your phone at anything puzzling around your home — a weird stain, a mystery valve, an odd noise's source — and get a straight answer: what it is, why it's like that, and what to do next.</p>
+    </div>
+    <button class="primary wlc-demo" id="wlcDemo">▶ See it work — no setup needed</button>
+    <div class="wlc-sep">then set up once — free</div>
+    <ol class="wlc-steps">
+      <li>
+        <b>Get your free key from Google.</b> Takes ~30 seconds — no credit card, no charge.
+        <a class="wlc-getkey" id="wlcGetKey" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Open Google AI Studio →</a>
+      </li>
+      <li>
+        <b>Paste it here and you're in.</b> It's saved only on this device — never sent to us.
+        <div class="wlc-keyrow">
+          <input id="wlcKey" type="password" placeholder="Paste your key (starts with AIza…)" autocomplete="off" />
+          <button id="wlcSave">Start</button>
+        </div>
+        <div class="keyhint" id="wlcNote"></div>
+      </li>
+    </ol>
+    <div class="wlc-reassure">Powered by Google Gemini's free tier. Your key and photos go straight from your phone to Google — nothing passes through us.</div>
+  </div>
+
   <!-- capture card -->
-  <div class="card pad">
+  <div class="card pad" id="captureCard">
     <div class="settings" id="settings">
       <div class="field">
         <label>AI provider</label>
@@ -326,9 +381,34 @@
     const btn = e.target.closest("button[data-p]"); if(!btn) return;
     state.provider = btn.dataset.p; renderProvider(); savePrefs();
   });
-  $("apiKey").addEventListener("change", ()=>{ savePrefs(); const k=$("apiKey").value.trim(); if(state.provider==="gemini" && k) fetchGeminiModels(k); });
+  $("apiKey").addEventListener("change", ()=>{ savePrefs(); updateOnboarding(); const k=$("apiKey").value.trim(); if(state.provider==="gemini" && k) fetchGeminiModels(k); });
   $("refreshModels").addEventListener("click", ()=>{ const k=$("apiKey").value.trim(); if(!k){ $("modelNote").textContent="Add your API key above first, then refresh."; return; } if(state.provider==="gemini") fetchGeminiModels(k); });
   $("model").addEventListener("change", ()=>{ try{localStorage.setItem("huh.model."+state.provider,$("model").value);}catch(e){} });
+
+  // ---------- first-run onboarding ----------
+  function hasKeyStored(){ try{ return !!((localStorage.getItem("huh.key.gemini")||"").trim() || (localStorage.getItem("huh.key.claude")||"").trim()); }catch(e){ return !!$("apiKey").value.trim(); } }
+  function updateOnboarding(){
+    const show = !hasKeyStored();
+    $("welcome").style.display = show ? "" : "none";
+    $("captureCard").style.display = show ? "none" : "";
+    $("settingsToggle").style.display = show ? "none" : "";
+  }
+  function showOnboarding(){ $("welcome").style.display=""; $("captureCard").style.display="none"; $("settingsToggle").style.display="none"; $("welcome").scrollIntoView({behavior:"smooth",block:"start"}); }
+  $("wlcDemo").addEventListener("click", ()=> $("sample").click());
+  function saveWelcomeKey(){
+    const k=$("wlcKey").value.trim();
+    if(!k){ $("wlcNote").textContent="Paste your key above first."; $("wlcKey").focus(); return; }
+    state.provider="gemini"; renderProvider();
+    $("apiKey").value=k; savePrefs();
+    $("wlcNote").textContent="Checking your key…";
+    fetchGeminiModels(k).then(ok=>{
+      updateOnboarding();
+      if(ok){ window.scrollTo({top:0,behavior:"smooth"}); }
+      else { $("modelNote").textContent="Saved your key, but couldn't verify the model list — if a diagnosis fails, re-check the key in Setup."; }
+    });
+  }
+  $("wlcSave").addEventListener("click", saveWelcomeKey);
+  $("wlcKey").addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); saveWelcomeKey(); } });
 
   // ---------- image capture ----------
   $("dropzone").addEventListener("click", ()=> $("file").click());
@@ -489,7 +569,7 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
     hideErr();
     if(!state.imgB64){ showErr("Add a photo first — tap the box up top."); return; }
     const key = $("apiKey").value.trim();
-    if(!key){ $("settings").classList.add("open"); showErr("Add your free API key in Setup to run a real diagnosis (or tap “See a sample answer”)."); return; }
+    if(!key){ showOnboarding(); return; }
     const model = $("model").value;
     const userText = buildUserText($("q").value.trim());
 
@@ -717,7 +797,15 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
   loadPrefs();
   renderProvider();
   try{ const m=localStorage.getItem("huh.model."+state.provider); if(m) $("model").value=m; }catch(e){}
+  updateOnboarding();
 })();
+</script>
+<script>
+  // Register the service worker so the app installs to the home screen and works offline.
+  // (No-ops on file:// or insecure origins.)
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+  }
 </script>
 </body>
 </html>
