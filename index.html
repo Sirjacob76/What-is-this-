@@ -81,6 +81,8 @@
   .keyhint{font-size:12px;color:var(--muted);margin-top:6px}
   .keyhint a{color:var(--accent)}
 
+  .disclaimer{color:var(--muted);font-size:11.5px;line-height:1.45;margin:18px 0 0}
+
   /* ---- welcome / onboarding ---- */
   .welcome{text-align:center}
   .wlc-emoji{font-size:46px;line-height:1}
@@ -136,7 +138,8 @@
 
   /* ---- history ---- */
   #history{margin-top:34px;display:none}
-  #history h2{font-size:14px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:0 0 12px}
+  .hist-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  #history h2{font-size:14px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:0}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
   .tile{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer;text-align:left}
   .tile:hover{border-color:var(--accent)}
@@ -161,6 +164,7 @@
       <h1>Huh</h1>
       <p>Point at a mystery. Get a straight answer.</p>
     </div>
+    <button class="settings-btn install-btn" id="installBtn" style="display:none">⬇ Install app</button>
     <button class="settings-btn" id="settingsToggle">⚙ Setup</button>
   </header>
 
@@ -187,6 +191,7 @@
         <div class="keyhint" id="wlcNote"></div>
       </li>
     </ol>
+    <button class="primary install-btn" id="installBtnWlc" style="display:none;margin-top:14px">⬇ Install this as an app</button>
     <div class="wlc-reassure">Powered by Google Gemini's free tier. Your key and photos go straight from your phone to Google — nothing passes through us.</div>
   </div>
 
@@ -255,6 +260,7 @@
 
         <div class="nextstep"><h3 style="margin-bottom:5px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Do this next</h3><p id="rNext" style="margin:0;font-size:15.5px;line-height:1.5"></p></div>
         <div class="safety" id="rSafety" style="display:none"><div class="ic">⚠️</div><p id="rSafetyText"></p></div>
+        <p class="disclaimer">Huh is an AI and can be wrong — double-check anything involving safety, gas, electrical, structural, or money before acting on it.</p>
       </div>
     </div>
     <div class="actions">
@@ -266,13 +272,16 @@
 
   <!-- history -->
   <div id="history">
-    <h2>This session's mysteries</h2>
+    <div class="hist-head">
+      <h2>Your past mysteries</h2>
+      <button class="linkbtn" id="clearHistory" style="font-size:13px;padding:0">Clear</button>
+    </div>
     <div class="grid" id="grid"></div>
   </div>
 
   <footer>
     Your photo and key go straight from your browser to the AI provider you choose — nothing is stored on any server.<br/>
-    History lives in this tab only and clears when you close it.
+    Your history is saved only on this device. · <a id="privacyLink" href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>
   </footer>
 </div>
 
@@ -413,7 +422,9 @@
   // ---------- image capture ----------
   $("dropzone").addEventListener("click", ()=> $("file").click());
   $("file").addEventListener("change", e=>{
-    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";           // allow re-picking the same file after a Retake
+    if(!f) return;
     readImage(f);
   });
   // drag & drop (desktop)
@@ -425,22 +436,31 @@
   });
 
   function readImage(file){
+    if(file.type && !/^image\//i.test(file.type)){
+      showErr("That doesn't look like a photo — pick an image file (JPG, PNG, HEIC…)."); return;
+    }
     const reader = new FileReader();
+    reader.onerror = ()=> showErr("Couldn't read that file. Try again, or pick a different photo.");
     reader.onload = ()=>{
       // downscale big photos so requests stay small & fast
       const img = new Image();
       img.onload = ()=>{
-        const max = 1280;
-        let {width:w, height:h} = img;
-        if(Math.max(w,h) > max){ const s = max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
-        const c = document.createElement("canvas"); c.width=w; c.height=h;
-        c.getContext("2d").drawImage(img,0,0,w,h);
-        const url = c.toDataURL("image/jpeg", 0.85);
-        state.imgDataUrl = url;
-        state.imgMime = "image/jpeg";
-        state.imgB64 = url.split(",")[1];
-        showThumb(url);
+        try{
+          const max = 1280;
+          let {width:w, height:h} = img;
+          if(!w || !h){ throw new Error("empty dimensions"); }
+          if(Math.max(w,h) > max){ const s = max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+          const c = document.createElement("canvas"); c.width=w; c.height=h;
+          c.getContext("2d").drawImage(img,0,0,w,h);
+          const url = c.toDataURL("image/jpeg", 0.85);
+          if(!url || url.length < 32){ throw new Error("encode failed"); }
+          state.imgDataUrl = url;
+          state.imgMime = "image/jpeg";
+          state.imgB64 = url.split(",")[1];
+          hideErr(); showThumb(url);
+        }catch(e){ showErr("Couldn't process that photo — try a different one."); }
       };
+      img.onerror = ()=> showErr("Couldn't open that image. If it's an iPhone photo, set Camera → Formats → “Most Compatible”, or pick a different photo.");
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
@@ -498,6 +518,13 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
   }
 
   // ---------- API calls ----------
+  async function fetchWithTimeout(url, opts, ms){
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), ms);
+    try{ return await fetch(url, Object.assign({}, opts, {signal:ctrl.signal})); }
+    finally{ clearTimeout(t); }
+  }
+
   async function callGemini(key, model, userText){
     const url = "https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent";
     const body = {
@@ -508,14 +535,19 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
       ]}],
       generationConfig:{ temperature:0.4, responseMimeType:"application/json" }
     };
-    const r = await fetch(url,{
+    const r = await fetchWithTimeout(url,{
       method:"POST",
       headers:{ "Content-Type":"application/json", "x-goog-api-key":key },
       body:JSON.stringify(body)
-    });
+    }, 45000);
     if(!r.ok){ throw new Error(await friendlyErr(r,"Gemini")); }
     const data = await r.json();
-    const txt = (((data.candidates||[])[0]||{}).content||{}).parts?.map(p=>p.text).join("") || "";
+    const cand = (data.candidates||[])[0];
+    const txt = (((cand||{}).content||{}).parts||[]).map(p=>p.text||"").join("") || "";
+    if(!txt){
+      const reason = (data.promptFeedback&&data.promptFeedback.blockReason) || (cand&&cand.finishReason) || "";
+      throw new Error("The AI couldn't read this photo"+(reason?(" ("+String(reason).toLowerCase()+")"):"")+". Try a clearer, closer, or different photo.");
+    }
     return parseModel(txt);
   }
 
@@ -527,7 +559,7 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
         {type:"image", source:{ type:"base64", media_type:state.imgMime, data:state.imgB64 }}
       ]}]
     };
-    const r = await fetch("https://api.anthropic.com/v1/messages",{
+    const r = await fetchWithTimeout("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{
         "content-type":"application/json",
@@ -536,10 +568,11 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
         "anthropic-dangerous-direct-browser-access":"true"
       },
       body:JSON.stringify(body)
-    });
+    }, 45000);
     if(!r.ok){ throw new Error(await friendlyErr(r,"Claude")); }
     const data = await r.json();
     const txt = (data.content||[]).map(b=>b.text||"").join("");
+    if(!txt){ throw new Error("The AI returned an empty response. Try again, or use a clearer photo."); }
     return parseModel(txt);
   }
 
@@ -564,16 +597,19 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
   }
 
   // ---------- run ----------
+  let busy=false;
   $("diagnose").addEventListener("click", run);
   async function run(){
+    if(busy) return;
     hideErr();
     if(!state.imgB64){ showErr("Add a photo first — tap the box up top."); return; }
     const key = $("apiKey").value.trim();
     if(!key){ showOnboarding(); return; }
+    if(navigator.onLine===false){ showErr("You're offline — connect to the internet to run a diagnosis."); return; }
     const model = $("model").value;
     const userText = buildUserText($("q").value.trim());
 
-    setBusy(true);
+    busy=true; setBusy(true);
     try{
       const res = state.provider==="gemini"
         ? await callGemini(key, model, userText)
@@ -581,15 +617,20 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
       renderResult(res, state.imgDataUrl);
       addHistory(res, state.imgDataUrl);
     }catch(err){
-      if((err.message||"").indexOf("__MODEL_404__")>=0){
+      const msg = (err && err.message) || String(err);
+      if(msg.indexOf("__MODEL_404__")>=0){
         $("settings").classList.add("open");
         await fetchGeminiModels(key);
         showErr("That model isn't available to your key anymore — I've refreshed the list and picked a working one. Tap “Diagnose it” again.");
+      }else if(err && (err.name==="AbortError" || /abort/i.test(msg))){
+        showErr("That took too long and timed out. Check your connection and try again.");
+      }else if(err instanceof TypeError || /failed to fetch|networkerror|load failed|network request/i.test(msg)){
+        showErr("Couldn't reach "+(state.provider==="gemini"?"Google":"Anthropic")+". Check your internet connection and try again.");
       }else{
-        showErr(err.message || String(err));
+        showErr(msg);
       }
     }finally{
-      setBusy(false);
+      busy=false; setBusy(false);
     }
   }
 
@@ -624,23 +665,48 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
     window.scrollTo({top:0,behavior:"smooth"});
   });
 
-  // ---------- history ----------
-  function addHistory(r, imgUrl){
-    state.history.unshift({r, imgUrl});
-    const grid = $("grid");
+  // ---------- history (persisted on-device in IndexedDB) ----------
+  const DB_NAME="huh-db", STORE="history", HIST_CAP=40;
+  function idbOpen(){ return new Promise((res,rej)=>{ let rq; try{ rq=indexedDB.open(DB_NAME,1); }catch(e){ return rej(e); } rq.onupgradeneeded=()=>{ const db=rq.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE,{keyPath:"id"}); }; rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
+  async function idbAll(){ try{ const db=await idbOpen(); return await new Promise((res,rej)=>{ const rq=db.transaction(STORE,"readonly").objectStore(STORE).getAll(); rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>rej(rq.error); }); }catch(e){ return []; } }
+  async function idbPut(item){ try{ const db=await idbOpen(); await new Promise((res,rej)=>{ const tx=db.transaction(STORE,"readwrite"); tx.objectStore(STORE).put(item); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }catch(e){} }
+  async function idbDel(id){ try{ const db=await idbOpen(); await new Promise((res)=>{ const tx=db.transaction(STORE,"readwrite"); tx.objectStore(STORE).delete(id); tx.oncomplete=res; tx.onerror=res; }); }catch(e){} }
+  async function idbClearAll(){ try{ const db=await idbOpen(); await new Promise((res)=>{ const tx=db.transaction(STORE,"readwrite"); tx.objectStore(STORE).clear(); tx.oncomplete=res; tx.onerror=res; }); }catch(e){} }
+
+  function renderGrid(){
+    const grid=$("grid");
+    if(!state.history.length){ $("history").style.display="none"; grid.innerHTML=""; return; }
     $("history").style.display="block";
     grid.innerHTML="";
-    state.history.forEach((h,i)=>{
-      const t = document.createElement("button"); t.className="tile";
-      t.innerHTML =
-        '<img src="'+h.imgUrl+'" alt=""/>'+
+    state.history.forEach(h=>{
+      const t=document.createElement("button"); t.className="tile";
+      t.innerHTML='<img src="'+h.imgUrl+'" alt=""/>'+
         '<div class="tb"><p class="tt">'+escapeHtml(h.r.title||"Mystery")+'</p>'+
         '<span class="st"><span class="dot '+h.r.stakes+'"></span> '+
         ({low:"Low",medium:"Attention",high:"High"})[h.r.stakes]+'</span></div>';
-      t.addEventListener("click", ()=>{ renderResult(h.r, h.imgUrl); });
+      t.addEventListener("click", ()=> renderResult(h.r, h.imgUrl));
       grid.appendChild(t);
     });
   }
+  let histSeq=0;
+  function addHistory(r, imgUrl){
+    const item={ id:Date.now()+"-"+(histSeq++), ts:Date.now(), r, imgUrl };
+    state.history.unshift(item);
+    idbPut(item);
+    while(state.history.length>HIST_CAP){ const old=state.history.pop(); if(old) idbDel(old.id); }
+    renderGrid();
+  }
+  async function loadHistory(){
+    const items=await idbAll();
+    items.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    state.history=items;
+    renderGrid();
+  }
+  $("clearHistory").addEventListener("click", async ()=>{
+    if(!state.history.length) return;
+    if(!confirm("Clear all saved mysteries on this device? This can't be undone.")) return;
+    await idbClearAll(); state.history=[]; renderGrid();
+  });
   function escapeHtml(s){return (s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
   // ---------- save/share as image (self-contained canvas renderer) ----------
@@ -785,8 +851,7 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
     return c.toDataURL("image/jpeg",0.8);
   })();
   $("sample").addEventListener("click", ()=>{
-    renderResult(SAMPLE, SAMPLE_IMG);
-    addHistory(SAMPLE, SAMPLE_IMG);
+    renderResult(SAMPLE, SAMPLE_IMG);   // preview only — samples aren't saved to history
   });
 
   // ---------- errors ----------
@@ -794,10 +859,21 @@ Set stakes "high" for anything that risks safety or costly damage, "medium" if i
   function hideErr(){ $("err").classList.remove("show"); }
 
   // ---------- init ----------
+  // ---------- install-as-app ----------
+  let deferredPrompt=null;
+  const inStandalone = ()=> (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone===true;
+  function setInstallVisible(v){ ["installBtn","installBtnWlc"].forEach(id=>{ const el=$(id); if(el) el.style.display = v ? "" : "none"; }); }
+  window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt=e; if(!inStandalone()) setInstallVisible(true); });
+  window.addEventListener('appinstalled', ()=>{ deferredPrompt=null; setInstallVisible(false); });
+  async function doInstall(){ if(!deferredPrompt) return; deferredPrompt.prompt(); try{ await deferredPrompt.userChoice; }catch(e){} deferredPrompt=null; setInstallVisible(false); }
+  $("installBtn").addEventListener("click", doInstall);
+  $("installBtnWlc").addEventListener("click", doInstall);
+
   loadPrefs();
   renderProvider();
   try{ const m=localStorage.getItem("huh.model."+state.provider); if(m) $("model").value=m; }catch(e){}
   updateOnboarding();
+  loadHistory();
 })();
 </script>
 <script>

@@ -1,7 +1,8 @@
-// Service worker for the "Huh" app — caches the app shell so it installs to the
-// home screen and works offline. API calls (cross-origin) are never touched.
-const CACHE = 'huh-v1';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+// Service worker for the "Huh" app — installs to the home screen and works offline.
+// Page HTML is network-first (so updates deploy), static assets are cache-first,
+// and cross-origin AI API calls are never touched.
+const CACHE = 'huh-v3';
+const ASSETS = ['./', './index.html', './privacy.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -19,14 +20,28 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method !== 'GET') return;                 // let POSTs (API calls) go straight to network
+  if (req.method !== 'GET') return;                 // POSTs (API calls) go straight to network
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;  // never cache/intercept Gemini/Anthropic requests
+  if (url.origin !== self.location.origin) return;  // never touch Gemini/Anthropic requests
+
+  const isPage = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
+  if (isPage) {
+    // Network-first: always try the freshest page, fall back to cache when offline.
+    e.respondWith(
+      fetch(req).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(req, copy));
+        return res;
+      }).catch(() => caches.match(req).then(hit => hit || caches.match('./index.html')))
+    );
+    return;
+  }
+  // Cache-first for static assets (icons, manifest).
   e.respondWith(
     caches.match(req).then(hit => hit || fetch(req).then(res => {
       const copy = res.clone();
       caches.open(CACHE).then(c => c.put(req, copy));
       return res;
-    }).catch(() => caches.match('./index.html')))    // offline fallback to the app shell
+    }))
   );
 });
